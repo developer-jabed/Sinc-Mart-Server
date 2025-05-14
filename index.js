@@ -30,6 +30,7 @@ async function run() {
     const reviewCollection = client.db("Sinc-mart").collection("reviews");
     const reportCollection = client.db("Sinc-mart").collection("reports");
     const orderCollection = client.db("Sinc-mart").collection("Orders");
+    const QandACollection = client.db("Sinc-mart").collection("QandA");
 
     // --------------------
     // Users
@@ -67,20 +68,83 @@ async function run() {
       }
     });
 
+    app.get("/products/page", async (req, res) => {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 5;
+      const skip = (page - 1) * limit;
+
+      const products = await productCollection
+        .find()
+        .skip(skip)
+        .limit(limit)
+        .toArray();
+      const total = await productCollection.countDocuments();
+
+      res.json({ products, total });
+    });
+
     app.get("/products", async (req, res) => {
       const result = await productCollection.find().toArray();
       res.send(result);
     });
-    app.post('/Products', async (req, res) => {
-  try {
-    const product = req.body;
-    const result = await productCollection.insertOne(product);
-    res.status(201).send(result);
-  } catch (error) {
-    res.status(500).send({ error: 'Failed to add product' });
-  }
-});
+    app.post("/Products", async (req, res) => {
+      try {
+        const product = req.body;
+        const result = await productCollection.insertOne(product);
+        res.status(201).send(result);
+      } catch (error) {
+        res.status(500).send({ error: "Failed to add product" });
+      }
+    });
+    app.delete("/products/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await productCollection.deleteOne(query);
+      res.send(result);
+    });
+    // Get Q&A for a specific product
+    // GET: Fetch Q&A for a product
+    app.get("/QandA/:productId", async (req, res) => {
+      try {
+        const qna = await QandACollection.find({
+          productId: req.params.productId,
+        }).toArray();
+        res.json(qna);
+      } catch (error) {
+        res.status(500).json({ message: "Error fetching Q&A" });
+      }
+    });
 
+    // POST: Submit a new question
+    app.post("/QandA/:productId", async (req, res) => {
+      try {
+        const newQuestion = {
+          productId: req.params.productId,
+          question: req.body.question,
+          answer: "", // Optional
+          createdAt: new Date(),
+        };
+        const result = await QandACollection.insertOne(newQuestion);
+        res.status(201).json({ ...newQuestion, _id: result.insertedId });
+      } catch (error) {
+        res.status(500).json({ message: "Error submitting question" });
+      }
+    });
+
+    // PATCH: Answer a question
+    app.patch("/QandA/:id", async (req, res) => {
+      try {
+        const { answer } = req.body;
+        const result = await QandACollection.findOneAndUpdate(
+          { _id: new ObjectId(req.params.id) },
+          { $set: { answer } },
+          { returnDocument: "after" }
+        );
+        res.json(result.value);
+      } catch (error) {
+        res.status(500).json({ message: "Error submitting answer" });
+      }
+    });
 
     app.get("/product/:id", async (req, res) => {
       const { id } = req.params;
@@ -158,10 +222,10 @@ async function run() {
 
       res.status(200).json({ message: "Checkout successful" });
     });
-    app.get("/order", async (req, res) =>{
+    app.get("/order", async (req, res) => {
       const result = await orderCollection.find().toArray();
       res.send(result);
-    })
+    });
   } finally {
     // Optional: don't close the connection if running persistently
   }
